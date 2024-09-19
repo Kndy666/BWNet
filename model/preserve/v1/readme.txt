@@ -1,0 +1,1 @@
+4 output ports shared weights
