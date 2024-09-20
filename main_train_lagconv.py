@@ -22,20 +22,22 @@ cudnn.deterministic = True
 
 #################### initializing hyper-parameters ####################
 lr = 0.001
-ckpt = 50
+ckpt = 10
 epochs = 1000
-start_epoch = 0
+start_epoch = 850
 batch_size = 64
 
 model = BWNet().cuda()
+weight_path = 'weights/model_epoch_lagconv850.pth'
+model.load_state_dict(torch.load(weight_path))
 summaries(model, grad=True)
 
 
 ################### initializing criterion and optimizer ###################
 criterion = nn.L1Loss().cuda()
 #criterion = nn.MSELoss().cuda()
-optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0)
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=100, gamma=0.5)
+optimizer = optim.Adam([{'params': model.parameters(), 'initial_lr': lr}], lr=lr, weight_decay=0)
+lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=150, gamma=0.5, last_epoch=start_epoch)
 
 
 ############################# main functions ###############################
