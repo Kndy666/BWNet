@@ -71,7 +71,7 @@ def load_h5py_hp(file_path):
     return ms, ms_hp, pan, pan_hp
 
 #900 38.9863 850 38.9895
-ckpt = 'weights/model_epoch_lagconv850.pth'
+ckpt = 'weights/BWNET_LAGConv_T2/model_epoch_820.pth'
 
 
 def test(file_path, save_path):
@@ -100,9 +100,9 @@ def test(file_path, save_path):
 
 
 if __name__ == '__main__':
-    file_path = '../../02-Test-toolbox-for-traditional-and-DL(Matlab)-1/1_TestData/PanCollection/test_wv3_OrigScale_multiExm1.h5'
-    save_path = '../../02-Test-toolbox-for-traditional-and-DL(Matlab)-1/2_DL_Result/WV3_Full/BWNET_LAGConv/results'
-    # file_path = '../../02-Test-toolbox-for-traditional-and-DL(Matlab)-1/1_TestData/PanCollection/test_wv3_multiExm1.h5'
-    # save_path = '../../02-Test-toolbox-for-traditional-and-DL(Matlab)-1/2_DL_Result/WV3_Reduced/BWNET_LAGConv/results'
+    # file_path = '../../02-Test-toolbox-for-traditional-and-DL(Matlab)-1/1_TestData/PanCollection/test_wv3_OrigScale_multiExm1.h5'
+    # save_path = '../../02-Test-toolbox-for-traditional-and-DL(Matlab)-1/2_DL_Result/WV3_Full/BWNET_LAGConv/results'
+    file_path = '../../02-Test-toolbox-for-traditional-and-DL(Matlab)-1/1_TestData/PanCollection/test_wv3_multiExm1.h5'
+    save_path = '../../02-Test-toolbox-for-traditional-and-DL(Matlab)-1/2_DL_Result/WV3_Reduced/BWNET_LAGConv/results'
     os.makedirs(save_path, exist_ok=True)
     test(file_path, save_path)
