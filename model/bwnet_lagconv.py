@@ -116,8 +116,7 @@ class Attention(nn.Module):
 
         self.temperature = nn.Parameter(torch.ones(1, 1, 1))
         self.hidden_dim = dim * 2
-        self.to_q = nn.Linear(dim, dim, bias=False)
-        self.to_k = nn.Linear(dim, dim, bias=False)
+        self.linear_transform = nn.Linear(dim, dim, bias=False)
         self.to_out = nn.Sequential(
             nn.Linear(dim, self.hidden_dim),
             nn.Dropout(dropout),
@@ -128,9 +127,10 @@ class Attention(nn.Module):
 
     def forward(self, x):
         b, n, _ = x.shape
-        q = self.to_q(x)
-        k = self.to_k(x)
-        attn = (q.transpose(-2, -1) @ k) * self.temperature / (n / (64 * 64))
+        # q = self.to_q(x)
+        # k = self.to_k(x)
+        cov = x.transpose(-2, -1) @ x
+        attn = self.linear_transform(cov) * self.temperature / (n / (64 * 64))
         out = self.to_out(attn).softmax(dim=-1)
         return out.transpose(-2, -1)
 

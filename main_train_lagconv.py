@@ -31,21 +31,18 @@ model = BWNet().cuda()
 weight_path = ''
 if os.path.exists(weight_path):
     model.load_state_dict(torch.load(weight_path))
-else:
-    init_weights(model.raise_dim, model.layers, model.bw_output, model.to_output)
 summaries(model, grad=True)
 
 ################### initializing criterion and optimizer ###################
-# criterion = nn.L1Loss().cuda()
+criterion = nn.L1Loss().cuda()
 #criterion = nn.MSELoss().cuda()
-criterion = nn.SmoothL1Loss().cuda()
 optimizer = optim.Adam([{'params': model.parameters(), 'initial_lr': lr}], lr=lr, weight_decay=0)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=125, gamma=0.5, last_epoch=start_epoch)
 
 
 ############################# main functions ###############################
 def save_checkpoint(model, epoch):
-    model_out_path = os.path.join("weights/BWNET_LAGConv_T2", "model_epoch_{}.pth".format(epoch))
+    model_out_path = os.path.join("weights/BWNET_LAGConv_T5", "model_epoch_{}.pth".format(epoch))
     torch.save(model.state_dict(), model_out_path)
 
 
@@ -54,7 +51,7 @@ def train(training_data_loader, validate_data_loader, start_epoch=0):
     print('Start training...')
     val_loss, train_loss = [], []
     
-    writer = SummaryWriter('loss_data/lagconv_t2')
+    writer = SummaryWriter('loss_data/lagconv_t5')
 
     # train
     for epoch in range(start_epoch, epochs, 1):
@@ -102,7 +99,7 @@ def train(training_data_loader, validate_data_loader, start_epoch=0):
             save_checkpoint(model, epoch)
 
             # save train loss
-            f_train_loss = open("loss_data/train_loss_t2.txt", 'r+')
+            f_train_loss = open("loss_data/train_loss_t5.txt", 'r+')
             f_train_loss.read()
             for i in range(len(train_loss)):
                 f_train_loss.write(str(train_loss[i]))
@@ -111,7 +108,7 @@ def train(training_data_loader, validate_data_loader, start_epoch=0):
             train_loss = []
 
             # save val loss
-            f_val_loss = open("loss_data/validation_loss_t2.txt", 'r+')
+            f_val_loss = open("loss_data/validation_loss_t5.txt", 'r+')
             f_val_loss.read()
             for i in range(len(val_loss)):
                 f_val_loss.write(str(val_loss[i]))
@@ -124,7 +121,7 @@ def train(training_data_loader, validate_data_loader, start_epoch=0):
 
 if __name__ == "__main__":
     train_set = Dataset_Pro('../../training_data/wv3/train_wv3.h5')
-    training_data_loader = DataLoader(dataset=train_set, num_workers=4, batch_size=batch_size, shuffle=True,
+    training_data_loader = DataLoader(dataset=train_set, num_workers=8, batch_size=batch_size, shuffle=True,
                                       pin_memory=True, drop_last=True)
     validate_set = Dataset_Pro('../../training_data/wv3/valid_wv3.h5')
     validate_data_loader = DataLoader(dataset=validate_set, num_workers=4, batch_size=batch_size, shuffle=True,

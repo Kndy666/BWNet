@@ -3,7 +3,7 @@ import h5py
 import torch
 import numpy as np
 import hdf5storage
-from model.bwnet_lagconv import BWNet
+from model.bwnet_lagconv import BWNet 
 import scipy.io as sio
 import os
 
@@ -68,10 +68,11 @@ def load_h5py_hp(file_path):
     pan_hp = np.expand_dims(pan_hp, axis=3)  # NxHxWx1
     pan_hp = torch.from_numpy(pan_hp).permute(0, 3, 1, 2)
 
-    return ms, ms_hp, pan, pan_hp
+    return ms, ms_hp, pan, pan_hp 
 
 #900 38.9863 850 38.9895
-ckpt = 'weights/BWNET_LAGConv_T2/model_epoch_820.pth'
+#870 38.9152
+ckpt = 'weights/model_epoch_lagconv200.pth'
 
 
 def test(file_path, save_path):
