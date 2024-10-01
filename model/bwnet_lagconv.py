@@ -114,39 +114,45 @@ class Attention(nn.Module):
     def __init__(self, dim, num_lacrbs, dropout=0.):
         super().__init__()
 
-        self.temperature = nn.Parameter(torch.ones(1, 1, 1))
         self.hidden_dim = dim * 2
-        self.linear_transform = nn.Linear(dim, dim, bias=False)
-        self.to_out = nn.Sequential(
+        self.cov_mlp = nn.Sequential(
             nn.Linear(dim, self.hidden_dim),
             nn.Dropout(dropout),
             nn.LeakyReLU(),
-            nn.Linear(self.hidden_dim, num_lacrbs),
+            nn.Linear(self.hidden_dim, dim),
+            nn.Dropout(dropout),
+            nn.LeakyReLU(),
+            nn.Linear(dim, dim),
+            nn.Dropout(dropout),
+            nn.LeakyReLU(),
+            nn.Linear(dim, num_lacrbs),
             nn.Dropout(dropout)
         )
 
     def forward(self, x):
-        b, n, _ = x.shape
-        # q = self.to_q(x)
-        # k = self.to_k(x)
+        x -= x.mean(dim=-2, keepdim=True)
+
         cov = x.transpose(-2, -1) @ x
-        attn = self.linear_transform(cov) * self.temperature / (n / (64 * 64))
-        out = self.to_out(attn).softmax(dim=-1)
-        return out.transpose(-2, -1)
+        cov_norm = torch.norm(x.transpose(-2, -1), p=2, dim=-1, keepdim=True)
+        cov_norm = cov_norm @ cov_norm.transpose(-2, -1)
+        cov /= cov_norm
+
+        attn = self.cov_mlp(cov).softmax(dim=-1)
+        return attn.transpose(-2, -1)
 
 
 class BandSelectBlock(nn.Module):
     def __init__(self, dim, num_lacrbs):
         super().__init__()
 
-        self.norm = nn.LayerNorm(dim)
         self.attn = Attention(dim, num_lacrbs)
+        self.norm = nn.LayerNorm(dim)
         self.temperature = nn.Parameter(torch.zeros(1, dim, 1, 1))
 
     def forward(self, input, x):
         H = input.shape[2]
-        input = self.norm(rearrange(input, 'B C H W -> B (H W) C', H=H))
-        attn = self.attn(input)  # B x num_res2blocks x C
+        input = rearrange(input, 'B C H W -> B (H W) C', H=H)
+        attn = self.attn(input.clone())  # B x num_res2blocks x C
         x = torch.stack(x, dim=0).transpose(0, 1)  # B x num_res2blocks x C x H x W
         output = torch.sum(attn.unsqueeze(-1).unsqueeze(-1) * x, dim=1) + self.temperature  # B x C x H x W
         return output
@@ -193,8 +199,10 @@ def summaries(model, grad=False):
             if param.requires_grad:
                 print(name)
 
-model = BWNet().cuda()
-summaries(model, grad=True)
+
+if __name__ == '__main__':
+    model = BWNet().cuda()
+    summaries(model, grad=True)
 
 
 

@@ -72,7 +72,7 @@ def load_h5py_hp(file_path):
 
 #900 38.9863 850 38.9895
 #870 38.9152
-ckpt = 'weights/model_epoch_lagconv200.pth'
+ckpt = 'weights/BWNET_LAGConv_T7/model_epoch_100.pth'
 
 
 def test(file_path, save_path):

@@ -21,7 +21,7 @@ cudnn.deterministic = True
 
 
 #################### initializing hyper-parameters ####################
-lr = 0.001
+lr = 0.002
 ckpt = 10
 epochs = 1000
 start_epoch = 0
@@ -42,7 +42,7 @@ lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=12
 
 ############################# main functions ###############################
 def save_checkpoint(model, epoch):
-    model_out_path = os.path.join("weights/BWNET_LAGConv_T5", "model_epoch_{}.pth".format(epoch))
+    model_out_path = os.path.join("weights/BWNET_LAGConv_T7", "model_epoch_{}.pth".format(epoch))
     torch.save(model.state_dict(), model_out_path)
 
 
@@ -51,7 +51,7 @@ def train(training_data_loader, validate_data_loader, start_epoch=0):
     print('Start training...')
     val_loss, train_loss = [], []
     
-    writer = SummaryWriter('loss_data/lagconv_t5')
+    writer = SummaryWriter('loss_data/lagconv_t7')
 
     # train
     for epoch in range(start_epoch, epochs, 1):
@@ -99,7 +99,7 @@ def train(training_data_loader, validate_data_loader, start_epoch=0):
             save_checkpoint(model, epoch)
 
             # save train loss
-            f_train_loss = open("loss_data/train_loss_t5.txt", 'r+')
+            f_train_loss = open("loss_data/train_loss_t7.txt", 'r+')
             f_train_loss.read()
             for i in range(len(train_loss)):
                 f_train_loss.write(str(train_loss[i]))
@@ -108,7 +108,7 @@ def train(training_data_loader, validate_data_loader, start_epoch=0):
             train_loss = []
 
             # save val loss
-            f_val_loss = open("loss_data/validation_loss_t5.txt", 'r+')
+            f_val_loss = open("loss_data/validation_loss_t7.txt", 'r+')
             f_val_loss.read()
             for i in range(len(val_loss)):
                 f_val_loss.write(str(val_loss[i]))

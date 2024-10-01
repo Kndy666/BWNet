@@ -1,4 +1,3 @@
-loss_data/lagconv/events.out.tfevents.1726733210.DESKTOP-VQQ5CE1.87378.0
-loss_data/train_loss.txt
-loss_data/validation_loss.txt
-loss_data/**
+weights/
+loss_data/
+__pycache__/

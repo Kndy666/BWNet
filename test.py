@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
+import numpy as np
 
-a = torch.rand(4, 8, 32, 32)
-b = torch.rand(4, 8, 32, 32)
+x = torch.from_numpy(np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]], dtype=np.float32))
 
-c = [a, b]
-print(torch.stack(c, 1).shape)
+a = torch.norm(x, p=2, dim=-1, keepdim=True)
+a = a @ a.transpose(-2, -1)
+print(a)
