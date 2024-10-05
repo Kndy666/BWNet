@@ -110,51 +110,64 @@ class LACRB(nn.Module):
         x=x+res
         return x
 
-class Attention(nn.Module):
-    def __init__(self, dim, num_lacrbs, dropout=0.):
+class CovBlock(nn.Module):
+    def __init__(self, feature_dimension, features_num, dropout=0.):
         super().__init__()
 
-        self.hidden_dim = dim * 2
+        self.hidden_dim = round(feature_dimension * 1.6)
+        self.hidden_dim2 = round(feature_dimension * 0.6)
         self.cov_mlp = nn.Sequential(
-            nn.Linear(dim, self.hidden_dim),
+            nn.Linear(feature_dimension, self.hidden_dim),
             nn.Dropout(dropout),
-            nn.LeakyReLU(),
-            nn.Linear(self.hidden_dim, dim),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(self.hidden_dim, self.hidden_dim2),
             nn.Dropout(dropout),
-            nn.LeakyReLU(),
-            nn.Linear(dim, dim),
-            nn.Dropout(dropout),
-            nn.LeakyReLU(),
-            nn.Linear(dim, num_lacrbs),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(self.hidden_dim2, features_num),
             nn.Dropout(dropout)
         )
 
     def forward(self, x):
-        x -= x.mean(dim=-2, keepdim=True)
+        x = x - x.mean(dim=-2, keepdim=True)
 
         cov = x.transpose(-2, -1) @ x
-        cov_norm = torch.norm(x.transpose(-2, -1), p=2, dim=-1, keepdim=True)
-        cov_norm = cov_norm @ cov_norm.transpose(-2, -1)
+        cov_norm = torch.norm(x, p=2, dim=-2, keepdim=True)
+        cov_norm = cov_norm.transpose(-2, -1) @ cov_norm
         cov /= cov_norm
 
-        attn = self.cov_mlp(cov).softmax(dim=-1)
-        return attn.transpose(-2, -1)
+        weight = self.cov_mlp(cov)
+        return weight
 
 
 class BandSelectBlock(nn.Module):
-    def __init__(self, dim, num_lacrbs):
+    def __init__(self, feature_dimension, features_num):
         super().__init__()
 
-        self.attn = Attention(dim, num_lacrbs)
-        self.norm = nn.LayerNorm(dim)
-        self.temperature = nn.Parameter(torch.zeros(1, dim, 1, 1))
+        self.CovBlockList = nn.ModuleList([])
+        for _ in range(features_num):
+            self.CovBlockList.append(CovBlock(feature_dimension, 1))
 
-    def forward(self, input, x):
-        H = input.shape[2]
-        input = rearrange(input, 'B C H W -> B (H W) C', H=H)
-        attn = self.attn(input.clone())  # B x num_res2blocks x C
-        x = torch.stack(x, dim=0).transpose(0, 1)  # B x num_res2blocks x C x H x W
-        output = torch.sum(attn.unsqueeze(-1).unsqueeze(-1) * x, dim=1) + self.temperature  # B x C x H x W
+        self.global_covblock = CovBlock(features_num, 1)
+        self.global_pool = nn.AdaptiveAvgPool2d(1)
+
+        self.temperature = nn.Parameter(torch.zeros(1, feature_dimension, 1, 1))
+
+    def forward(self, feature_maps):
+        H = feature_maps[0].shape[2]
+        C_weights = []
+
+        for feature_map, block in zip(feature_maps, self.CovBlockList):
+            input = rearrange(feature_map, 'B C H W -> B (H W) C', H=H)
+            C_weights.append(block(input).squeeze_(-1))
+
+        weight_matrix = torch.stack(C_weights, dim=1)  # B x features_num x C
+        feature_maps = torch.stack(feature_maps, dim=1)  # B x features_num x C x H x W
+        output = weight_matrix.unsqueeze_(-1).unsqueeze_(-1) * feature_maps # B x features_num x C x H x W
+
+        global_weight = self.global_pool(feature_maps).squeeze_(-1).squeeze_(-1)  # B x features_num x C
+        global_weight = F.softmax(self.global_covblock(global_weight.transpose_(-1, -2)), dim=-2) # B x features_num x 1
+
+        output = torch.sum(output * global_weight.unsqueeze(-1).unsqueeze(-1), dim=1) + self.temperature # B x C x H x W
         return output
 
 
@@ -179,21 +192,21 @@ class BWNet(nn.Module):
         ms = F.interpolate(ms, scale_factor=4, mode='bicubic')
         input = torch.concatenate([pan, ms], dim=1)
         x = self.raise_dim(input)
-        raise_output = x
         feature_list = []
 
         for layer in self.layers:
             x = layer(x)
             feature_list.append(x)
-        output = self.bw_output(raise_output, feature_list)
+        output = self.bw_output(feature_list)
 
         return self.to_output(output) + ms
 
 
 def summaries(model, grad=False):
     if grad:
-        from torchsummary import summary
-        summary(model, input_size=[(8, 16, 16), (1, 64, 64)], batch_size=1)
+        from torchinfo import summary
+        batch_size = 1
+        summary(model, input_size=[(batch_size, 8, 16, 16), (batch_size, 1, 64, 64)])
     else:
         for name, param in model.named_parameters():
             if param.requires_grad:

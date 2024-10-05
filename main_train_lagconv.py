@@ -42,7 +42,7 @@ lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=12
 
 ############################# main functions ###############################
 def save_checkpoint(model, epoch):
-    model_out_path = os.path.join("weights/BWNET_LAGConv_T7", "model_epoch_{}.pth".format(epoch))
+    model_out_path = os.path.join("weights/BWNET_LAGConv_T10", "model_epoch_{}.pth".format(epoch))
     torch.save(model.state_dict(), model_out_path)
 
 
@@ -51,7 +51,7 @@ def train(training_data_loader, validate_data_loader, start_epoch=0):
     print('Start training...')
     val_loss, train_loss = [], []
     
-    writer = SummaryWriter('loss_data/lagconv_t7')
+    writer = SummaryWriter('loss_data/lagconv_t10')
 
     # train
     for epoch in range(start_epoch, epochs, 1):
