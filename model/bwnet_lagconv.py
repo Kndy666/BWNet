@@ -111,20 +111,16 @@ class LACRB(nn.Module):
         return x
 
 class CovBlock(nn.Module):
-    def __init__(self, feature_dimension, features_num, dropout=0.):
+    def __init__(self, feature_dimension, features_num, hidden_dim, dropout=0.05):
         super().__init__()
 
-        self.hidden_dim = round(feature_dimension * 1.6)
-        self.hidden_dim2 = round(feature_dimension * 0.6)
         self.cov_mlp = nn.Sequential(
-            nn.Linear(feature_dimension, self.hidden_dim),
-            nn.Dropout(dropout),
+            nn.Linear(feature_dimension, feature_dimension),
+            nn.Dropout(dropout, inplace=True),
             nn.LeakyReLU(inplace=True),
-            nn.Linear(self.hidden_dim, self.hidden_dim2),
-            nn.Dropout(dropout),
+            nn.Linear(feature_dimension, hidden_dim),
             nn.LeakyReLU(inplace=True),
-            nn.Linear(self.hidden_dim2, features_num),
-            nn.Dropout(dropout)
+            nn.Linear(hidden_dim, features_num),
         )
 
     def forward(self, x):
@@ -145,9 +141,9 @@ class BandSelectBlock(nn.Module):
 
         self.CovBlockList = nn.ModuleList([])
         for _ in range(features_num):
-            self.CovBlockList.append(CovBlock(feature_dimension, 1))
+            self.CovBlockList.append(CovBlock(feature_dimension, 1, round(feature_dimension * 0.6), 0.05))
 
-        self.global_covblock = CovBlock(features_num, 1)
+        self.global_covblock = CovBlock(features_num, 1, features_num, 0)
         self.global_pool = nn.AdaptiveAvgPool2d(1)
 
         self.temperature = nn.Parameter(torch.zeros(1, feature_dimension, 1, 1))

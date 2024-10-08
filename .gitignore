@@ -1,3 +1,4 @@
 weights/
 loss_data/
 __pycache__/
+*.7z
