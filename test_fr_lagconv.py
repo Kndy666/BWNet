@@ -70,9 +70,8 @@ def load_h5py_hp(file_path):
 
     return ms, ms_hp, pan, pan_hp 
 
-#900 38.9863 850 38.9895
-#870 38.9152
-ckpt = 'weights/BWNET_LAGConv_Dropout2/model_epoch_660.pth'
+
+ckpt = ''
 
 
 def test(file_path, save_path):

@@ -21,7 +21,7 @@ cudnn.deterministic = True
 
 
 #################### initializing hyper-parameters ####################
-lr = 0.002
+lr = 0.001
 ckpt = 10
 epochs = 1000
 start_epoch = 0
@@ -37,12 +37,12 @@ summaries(model, grad=True)
 criterion = nn.L1Loss().cuda()
 #criterion = nn.MSELoss().cuda()
 optimizer = optim.Adam([{'params': model.parameters(), 'initial_lr': lr}], lr=lr, weight_decay=0)
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=125, gamma=0.5, last_epoch=start_epoch)
+lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=175, gamma=0.5, last_epoch=start_epoch)
 
 
 ############################# main functions ###############################
 def save_checkpoint(model, epoch):
-    model_out_path = os.path.join("weights/BWNET_LAGConv_Dropout2", "model_epoch_{}.pth".format(epoch))
+    model_out_path = os.path.join("weights/BWNET_LAGConv", "model_epoch_{}.pth".format(epoch))
     torch.save(model.state_dict(), model_out_path)
 
 
@@ -51,7 +51,7 @@ def train(training_data_loader, validate_data_loader, start_epoch=0):
     print('Start training...')
     val_loss, train_loss = [], []
     
-    writer = SummaryWriter('loss_data/lagconv_dropout2')
+    writer = SummaryWriter('loss_data/lagconv')
 
     # train
     for epoch in range(start_epoch, epochs, 1):
