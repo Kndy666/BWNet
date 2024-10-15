@@ -139,10 +139,6 @@ class BandSelectBlock(nn.Module):
     def __init__(self, feature_dimension, features_num):
         super().__init__()
 
-        self.CovBlockList = nn.ModuleList([])
-        for _ in range(features_num):
-            self.CovBlockList.append(CovBlock(feature_dimension, 1, round(feature_dimension * 0.6), 0.05))
-
         self.global_covblock = CovBlock(features_num, 1, features_num, 0)
         self.global_pool = nn.AdaptiveAvgPool2d(1)
 
@@ -150,20 +146,13 @@ class BandSelectBlock(nn.Module):
 
     def forward(self, feature_maps):
         H = feature_maps[0].shape[2]
-        C_weights = []
 
-        for feature_map, block in zip(feature_maps, self.CovBlockList):
-            input = rearrange(feature_map, 'B C H W -> B (H W) C', H=H)
-            C_weights.append(block(input).squeeze_(-1))
-
-        weight_matrix = torch.stack(C_weights, dim=1)  # B x features_num x C
         feature_maps = torch.stack(feature_maps, dim=1)  # B x features_num x C x H x W
-        output = weight_matrix.unsqueeze_(-1).unsqueeze_(-1) * feature_maps # B x features_num x C x H x W
 
         global_weight = self.global_pool(feature_maps).squeeze_(-1).squeeze_(-1)  # B x features_num x C
         global_weight = F.softmax(self.global_covblock(global_weight.transpose_(-1, -2)), dim=-2) # B x features_num x 1
 
-        output = torch.sum(output * global_weight.unsqueeze(-1).unsqueeze(-1), dim=1) + self.temperature # B x C x H x W
+        output = torch.sum(feature_maps * global_weight.unsqueeze(-1).unsqueeze(-1), dim=1) + self.temperature # B x C x H x W
         return output
 
 

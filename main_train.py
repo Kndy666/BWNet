@@ -1,4 +1,5 @@
 import os
+import csv
 import time
 import torch
 import random
@@ -9,112 +10,186 @@ from data import Dataset_Pro
 from torch.autograd import Variable
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
-from model.bwnet import BWNet, summaries
+from torch.utils.tensorboard import SummaryWriter
 
-SEED = 1
-torch.manual_seed(SEED)
-torch.cuda.manual_seed(SEED)
-torch.cuda.manual_seed_all(SEED)
-cudnn.benchmark = False
-cudnn.deterministic = True
+def init_train(config):
+    if config["model"] == "BWNET_LAGConv":
+        from model.bwnet_lagconv import BWNet, summaries
+    elif config["model"] == "BWNET_DICNN":
+        from model.bwnet_dicnn import BWNet, summaries
 
+    torch.manual_seed(config["SEED"])
+    torch.cuda.manual_seed(config["SEED"])
+    torch.cuda.manual_seed_all(config["SEED"])
+    random.seed(config["SEED"])
+    cudnn.benchmark = False
+    cudnn.deterministic = True
 
-#################### initializing hyper-parameters ####################
-lr = 0.001
-ckpt = 50
-epochs = 1000
-start_epoch = 0
-batch_size = 32
+    device = torch.device(config["device"])
 
-model = BWNet(1, 8, 32).cuda()
-summaries(model, grad=True)
+    if "wv3" in config["data_path_train"].lower():
+        config["dataset"] = "wv3"
+        config["num_bands"] = 8
+    elif "gf2" in config["data_path_train"].lower():
+        config["dataset"] = "gf2"
+        config["num_bands"] = 4
+    elif "qb" in config["data_path_train"].lower():
+        config["dataset"] = "qb"
+        config["num_bands"] = 4
 
+    config["tensorboard_log_dir"] = os.path.join(config["tensorboard_log_dir"], config["dataset"], config["model"])
+    config["loss_dir"] = os.path.join(config["loss_dir"], config["dataset"], config["model"])
+    config["model_weights_dir"] = os.path.join(config["model_weights_dir"], config["dataset"], config["model"])
+    config["train_loss_csv"] = os.path.join(config["loss_dir"], "train_loss.csv")
+    config["val_loss_csv"] = os.path.join(config["loss_dir"], "val_loss.csv")
+    os.makedirs(config["tensorboard_log_dir"], exist_ok=True)
+    os.makedirs(config["loss_dir"], exist_ok=True)
+    os.makedirs(config["model_weights_dir"], exist_ok=True)
 
-################### initializing criterion and optimizer ###################
-criterion = nn.L1Loss(size_average=True).cuda()
-#criterion = nn.MSELoss(size_average=True).cuda()
-optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0)
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=100, gamma=0.5)
+    model = BWNet(ms_dim=config["num_bands"]).to(device)
+    if config["model_resume_path"] is not None:
+        model.load_state_dict(torch.load(config["model_resume_path"], map_location=device))
 
+    if config["dataset"] == "wv3":
+        summaries(model, input_size=[(1, 8, 16, 16), (1, 1, 64, 64)], grad=True)
+    elif config["dataset"] == "gf2":
+        summaries(model, input_size=[(1, 4, 16, 16), (1, 1, 64, 64)], grad=True)
+    elif config["dataset"] == "qb":
+        summaries(model, input_size=[(1, 4, 16, 16), (1, 1, 64, 64)], grad=True)
 
-############################# main functions ###############################
-def save_checkpoint(model, epoch):
-    model_out_path = os.path.join("weights", "model_epoch_{}.pth".format(epoch))
+    if config["model"] == "BWNET_LAGConv":
+        config["lr"] = 0.002
+    elif config["model"] == "BWNET_DICNN":
+        config["lr"] = 0.001
+
+    return model, device
+
+def save_checkpoint(model, epoch, config):
+    model_out_path = os.path.join(config["model_weights_dir"], f"model_epoch_{epoch}.pth")
     torch.save(model.state_dict(), model_out_path)
 
+def train(training_data_loader, validate_data_loader, config):
+    model, device = init_train(config)
+    criterion = nn.L1Loss().to(device)
+    if config["save_band_loss"]:
+        criterion_band = nn.L1Loss().to(device)
+    optimizer = optim.Adam([{'params': model.parameters(), 'initial_lr': config["lr"]}], lr=config["lr"], weight_decay=0)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=config["step_size"], gamma=0.5, last_epoch=config["start_epoch"])
 
-def train(training_data_loader, validate_data_loader, start_epoch=0):
-    t_start = time.time()
+    writer = SummaryWriter(config["tensorboard_log_dir"])
+
     print('Start training...')
-    val_loss, train_loss = [], []
 
-    # train
-    for epoch in range(start_epoch, epochs, 1):
+    if config["save_band_loss"]:
+        with open(config["train_loss_csv"], mode='w', newline='') as train_file:
+            writer_train_csv = csv.writer(train_file)
+            writer_train_csv.writerow(['Epoch', 'Train Loss'] + [f'Train Band {i}' for i in range(config["num_bands"])])
+        with open(config["val_loss_csv"], mode='w', newline='') as val_file:
+            writer_val_csv = csv.writer(val_file)
+            writer_val_csv.writerow(['Epoch', 'Val Loss'] + [f'Val Band {i}' for i in range(config["num_bands"])])
+
+    for epoch in range(config["start_epoch"], config["epochs"], 1):
         model.train()
         epoch_train_loss = []
+        if config["save_band_loss"]:
+            band_train_loss = [0.0 for _ in range(config["num_bands"])]
+        
         for iteration, batch in enumerate(training_data_loader, 1):
-            gt, pan, ms = batch[0].cuda(), batch[3].cuda(), batch[4].cuda()
+            gt, pan, ms = batch[0].to(device), batch[3].to(device), batch[4].to(device)
             optimizer.zero_grad()
-            output0, output1, output2, output3 = model(ms, pan)
-            loss0 = criterion(output0, gt)
-            loss1 = criterion(output1, gt)
-            loss2 = criterion(output2, gt)
-            loss3 = criterion(output3, gt)
-            loss = 0.25 * (loss0 + loss1 + loss2 + loss3)
+            output = model(ms, pan)
+            loss = criterion(output, gt)
             epoch_train_loss.append(loss.item())
+
+            if config["save_band_loss"]:
+                for i in range(config["num_bands"]):
+                    band_loss = criterion_band(output[:, i, :, :], gt[:, i, :, :]).item()
+                    band_train_loss[i] += band_loss
+            
             loss.backward()
             optimizer.step()
+        
         lr_scheduler.step()
         t_loss = np.nanmean(np.array(epoch_train_loss))
-        train_loss.append(t_loss)
-        print('Epoch: {}/{}  training loss: {:.7f}'.format(epochs, epoch, t_loss))
+        print(f'Epoch: {epoch}/{config["epochs"]}  training loss: {t_loss:.7f}')
+        
+        if config["save_band_loss"]:
+            avg_train_band_loss = [band_train_loss[i] / len(training_data_loader) for i in range(config["num_bands"])]
+            with open(config["train_loss_csv"], mode='a', newline='') as train_file:
+                writer_train_csv = csv.writer(train_file)
+                writer_train_csv.writerow([epoch, t_loss] + avg_train_band_loss)
+            for i in range(config["num_bands"]):
+                writer.add_scalar(f'Loss_train_band/band_{i}', avg_train_band_loss[i], epoch)
 
-        # validate
+        writer.add_scalar('Loss/train', t_loss, epoch)
+
         with torch.no_grad():
-            if epoch % 10 == 0:
+            if epoch % config["log_interval"] == 0:
                 model.eval()
                 epoch_val_loss = []
+                if config["save_band_loss"]:
+                    band_val_loss = [0.0 for _ in range(config["num_bands"])]
+                
                 for iteration, batch in enumerate(validate_data_loader, 1):
-                    gt, pan, ms = batch[0].cuda(), batch[3].cuda(), batch[4].cuda()
-                    _, _, _, sr = model(ms, pan)
-                    loss = criterion(sr, gt)
-                    epoch_val_loss.append(loss.item())
+                    gt, pan, ms = batch[0].to(device), batch[3].to(device), batch[4].to(device)
+                    sr = model(ms, pan)
+                    val_loss_item = criterion(sr, gt)
+                    epoch_val_loss.append(val_loss_item.item())
+                    
+                    if config["save_band_loss"]:
+                        for i in range(config["num_bands"]):
+                            band_loss = criterion_band(sr[:, i, :, :], gt[:, i, :, :]).item()
+                            band_val_loss[i] += band_loss
+            
                 v_loss = np.nanmean(np.array(epoch_val_loss))
-                val_loss.append(v_loss)
-                print('---------------validate loss: {:.7f}---------------'.format(v_loss))
-                t_end = time.time()
-                print('-------------------time cost: {:.4f}s--------------------'.format(t_end - t_start))
+                print(f'---------------validate loss: {v_loss:.7f}---------------')
 
-        # save data
-        if epoch % ckpt == 0:
-            # save parameters
-            save_checkpoint(model, epoch)
+                if config["save_band_loss"]:
+                    avg_val_band_loss = [band_val_loss[i] / len(validate_data_loader) for i in range(config["num_bands"])]
+                    with open(config["val_loss_csv"], mode='a', newline='') as val_file:
+                        writer_val_csv = csv.writer(val_file)
+                        writer_val_csv.writerow([epoch, v_loss] + avg_val_band_loss)
+                    for i in range(config["num_bands"]):
+                        writer.add_scalar(f'Loss_val_band/band_{i}', avg_val_band_loss[i], epoch)
 
-            # save train loss
-            f_train_loss = open("loss_data/train_loss.txt", 'r+')
-            f_train_loss.read()
-            for i in range(len(train_loss)):
-                f_train_loss.write(str(train_loss[i]))
-                f_train_loss.write('\n')
-            f_train_loss.close()
-            train_loss = []
-
-            # save val loss
-            f_val_loss = open("loss_data/validation_loss.txt", 'r+')
-            f_val_loss.read()
-            for i in range(len(val_loss)):
-                f_val_loss.write(str(val_loss[i]))
-                f_val_loss.write('\n')
-            f_val_loss.close()
-            val_loss = []
-
+                writer.add_scalar('Loss/val', v_loss, epoch)
+        
+        if epoch % config["ckpt_interval"] == 0:
+            save_checkpoint(model, epoch, config)
+    
+    writer.close()
 
 if __name__ == "__main__":
-    train_set = Dataset_Pro('../../training_data/wv3/train_wv3.h5')
-    training_data_loader = DataLoader(dataset=train_set, num_workers=0, batch_size=batch_size, shuffle=True,
-                                      pin_memory=True, drop_last=True)
-    validate_set = Dataset_Pro('../../training_data/wv3/valid_wv3.h5')
-    validate_data_loader = DataLoader(dataset=validate_set, num_workers=0, batch_size=batch_size, shuffle=True,
-                                      pin_memory=True, drop_last=True)
-    train(training_data_loader, validate_data_loader, start_epoch)
+    config = {
+        "SEED": 1,
+        "lr": 0.002,
+        "ckpt_interval": 10,
+        "epochs": 1000,
+        "start_epoch": 0,
+        "batch_size": 64,
+        "step_size": 125,
+        "num_workers_train": 12,
+        "num_workers_val": 12,
+        "pin_memory": True,
+        "shuffle": True,
+        "log_interval": 10,
+        "save_band_loss": True,
+        "data_path_train": '../../training_data/wv3/train_wv3.h5',
+        "data_path_val": '../../training_data/wv3/valid_wv3.h5',
+        "tensorboard_log_dir": 'loss_data/tf-logs',
+        "loss_dir": "loss_data",
+        "model_weights_dir": "weights",
+        "model_resume_path": None,
+        "model": "BWNET_LAGConv",
+        "device": "cuda",
+    }
 
+    train_set = Dataset_Pro(config["data_path_train"])
+    training_data_loader = DataLoader(dataset=train_set, num_workers=config["num_workers_train"], batch_size=config["batch_size"],
+                                      shuffle=config["shuffle"], pin_memory=config["pin_memory"], drop_last=True)
+    
+    validate_set = Dataset_Pro(config["data_path_val"])
+    validate_data_loader = DataLoader(dataset=validate_set, num_workers=config["num_workers_val"], batch_size=config["batch_size"],
+                                      shuffle=config["shuffle"], pin_memory=config["pin_memory"], drop_last=True)
+    
+    train(training_data_loader, validate_data_loader, config)

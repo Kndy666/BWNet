@@ -143,9 +143,6 @@ class BandSelectBlock(nn.Module):
         for _ in range(features_num):
             self.CovBlockList.append(CovBlock(feature_dimension, 1, round(feature_dimension * 0.6), 0.05))
 
-        self.global_covblock = CovBlock(features_num, 1, features_num, 0)
-        self.global_pool = nn.AdaptiveAvgPool2d(1)
-
         self.temperature = nn.Parameter(torch.zeros(1, feature_dimension, 1, 1))
 
     def forward(self, feature_maps):
@@ -160,10 +157,7 @@ class BandSelectBlock(nn.Module):
         feature_maps = torch.stack(feature_maps, dim=1)  # B x features_num x C x H x W
         output = weight_matrix.unsqueeze_(-1).unsqueeze_(-1) * feature_maps # B x features_num x C x H x W
 
-        global_weight = self.global_pool(feature_maps).squeeze_(-1).squeeze_(-1)  # B x features_num x C
-        global_weight = F.softmax(self.global_covblock(global_weight.transpose_(-1, -2)), dim=-2) # B x features_num x 1
-
-        output = torch.sum(output * global_weight.unsqueeze(-1).unsqueeze(-1), dim=1) + self.temperature # B x C x H x W
+        output = torch.mean(output, dim=1) + self.temperature # B x C x H x W
         return output
 
 
@@ -201,6 +195,7 @@ class BWNet(nn.Module):
 def summaries(model, input_size, grad=False):
     if grad:
         from torchinfo import summary
+        batch_size = 1
         summary(model, input_size=input_size)
     else:
         for name, param in model.named_parameters():
