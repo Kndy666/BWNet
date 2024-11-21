@@ -13,10 +13,15 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 def init_train(config):
+
     if config["model"] == "BWNET_LAGConv":
-        from model.bwnet_lagconv import BWNet, summaries
+        from model.bwnet_lagconv_sota import BWNet, summaries
     elif config["model"] == "BWNET_DICNN":
         from model.bwnet_dicnn import BWNet, summaries
+    elif config["model"] == "BWNET_FusionNet":
+        from model.bwnet_fusionnet import BWNet, summaries
+    elif config["model"] == "BWNET_LGPNet":
+        from model.bwnet_lgpnet import BWNet, summaries
 
     torch.manual_seed(config["SEED"])
     torch.cuda.manual_seed(config["SEED"])
@@ -57,19 +62,23 @@ def init_train(config):
     elif config["dataset"] == "qb":
         summaries(model, input_size=[(1, 4, 16, 16), (1, 1, 64, 64)], grad=True)
 
-    if config["model"] == "BWNET_LAGConv":
-        config["lr"] = 0.002
-    elif config["model"] == "BWNET_DICNN":
-        config["lr"] = 0.001
+    train_set = Dataset_Pro(config["data_path_train"], config["dataset"])
+    training_data_loader = DataLoader(dataset=train_set, num_workers=config["num_workers_train"], batch_size=config["batch_size"],
+                                      shuffle=config["shuffle"], pin_memory=config["pin_memory"], drop_last=True)
+    
+    validate_set = Dataset_Pro(config["data_path_val"], config["dataset"])
+    validate_data_loader = DataLoader(dataset=validate_set, num_workers=config["num_workers_val"], batch_size=config["batch_size"],
+                                      shuffle=config["shuffle"], pin_memory=config["pin_memory"], drop_last=True)
 
-    return model, device
+    return model, device, training_data_loader, validate_data_loader
 
 def save_checkpoint(model, epoch, config):
     model_out_path = os.path.join(config["model_weights_dir"], f"model_epoch_{epoch}.pth")
     torch.save(model.state_dict(), model_out_path)
 
-def train(training_data_loader, validate_data_loader, config):
-    model, device = init_train(config)
+def train(config):
+
+    model, device, training_data_loader, validate_data_loader = init_train(config)
     criterion = nn.L1Loss().to(device)
     if config["save_band_loss"]:
         criterion_band = nn.L1Loss().to(device)
@@ -162,34 +171,26 @@ def train(training_data_loader, validate_data_loader, config):
 if __name__ == "__main__":
     config = {
         "SEED": 1,
-        "lr": 0.002,
+        "lr": 2e-3,
         "ckpt_interval": 10,
-        "epochs": 1000,
+        "epochs": 500,
         "start_epoch": 0,
         "batch_size": 64,
-        "step_size": 125,
-        "num_workers_train": 12,
-        "num_workers_val": 12,
+        "step_size": 150,
+        "num_workers_train": 16,
+        "num_workers_val": 16,
         "pin_memory": True,
         "shuffle": True,
         "log_interval": 10,
-        "save_band_loss": True,
-        "data_path_train": '../../training_data/wv3/train_wv3.h5',
-        "data_path_val": '../../training_data/wv3/valid_wv3.h5',
-        "tensorboard_log_dir": 'loss_data/tf-logs',
+        "save_band_loss": False,
+        "data_path_train": '',
+        "data_path_val": '',
+        "tensorboard_log_dir": 'tf-logs',
         "loss_dir": "loss_data",
         "model_weights_dir": "weights",
         "model_resume_path": None,
-        "model": "BWNET_LAGConv",
+        "model": "BWNET_LGPNet",
         "device": "cuda",
     }
-
-    train_set = Dataset_Pro(config["data_path_train"])
-    training_data_loader = DataLoader(dataset=train_set, num_workers=config["num_workers_train"], batch_size=config["batch_size"],
-                                      shuffle=config["shuffle"], pin_memory=config["pin_memory"], drop_last=True)
     
-    validate_set = Dataset_Pro(config["data_path_val"])
-    validate_data_loader = DataLoader(dataset=validate_set, num_workers=config["num_workers_val"], batch_size=config["batch_size"],
-                                      shuffle=config["shuffle"], pin_memory=config["pin_memory"], drop_last=True)
-    
-    train(training_data_loader, validate_data_loader, config)
+    train(config)

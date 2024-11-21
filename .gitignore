@@ -1,4 +1,16 @@
 weights/
 weights_server/
 loss_data/
+intermediate/
+weights_exp/
+output_csv/
+output_images/
 __pycache__/
+
+data_hp.py
+main_test_pannet.py
+main_test_x.py
+main_train_hp.py
+save*
+plot*
+vis.ipynb

@@ -72,9 +72,13 @@ def init_test(config):
     device = torch.device(config["device"])
 
     if config["model_type"] == "BWNET_LAGConv":
-        from model.bwnet_lagconv import BWNet
+        from model.bwnet_lagconv_sota import BWNet
     elif config["model_type"] == "BWNET_DICNN":
         from model.bwnet_dicnn import BWNet
+    elif config["model_type"] == "BWNET_FusionNet":
+        from model.bwnet_fusionnet import BWNet
+    elif config["model_type"] == "BWNET_LGPNet":
+        from model.bwnet_lgpnet import BWNet
 
     if config["dataset_type"] == "wv3":
         model = BWNet(ms_dim=8).to(device).eval()
@@ -116,12 +120,12 @@ def test(config):
 
 if __name__ == "__main__":
     config = {
-        "ckpt": "weights_server/BWNET_LAGConv/model_epoch_680.pth",
-        "data_path": "../../02-Test-toolbox-for-traditional-and-DL(Matlab)-1/1_TestData/PanCollection",
-        "save_path": "../../02-Test-toolbox-for-traditional-and-DL(Matlab)-1/2_DL_Result",
+        "ckpt": "",
+        "data_path": "",
+        "save_path": "",
         "dataset_type": "wv3",  # Type of dataset: 'wv3', 'gf2', or 'qb'
         "dataset_scale": "Reduced",  # Scale of dataset: 'Reduced' or 'Full'
-        "model_type": "BWNET_LAGConv",  # Model type: 'BWNET_LAGConv' or 'BWNET_DICNN'
+        "model_type": "",  # Model type: 'BWNET_LAGConv' or 'BWNET_DICNN' etc.
         "device": "cuda",
     }
     test(config)

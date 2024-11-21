@@ -50,7 +50,6 @@ class BWNet(nn.Module):
 
         return self.to_output(x) + ms
 
-
 def summaries(model, input_size, grad=False):
     if grad:
         from torchinfo import summary
@@ -60,10 +59,9 @@ def summaries(model, input_size, grad=False):
             if param.requires_grad:
                 print(name)
 
-
 if __name__ == '__main__':
     model = BWNet().cuda()
-    summaries(model, grad=True)
+    summaries(model, [(1, 8, 16, 16), (1, 1, 64, 64)], grad=True)
 
 
 

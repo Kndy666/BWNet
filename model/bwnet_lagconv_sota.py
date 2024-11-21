@@ -103,8 +103,11 @@ class LACRB(nn.Module):
         self.relu1=nn.LeakyReLU(inplace=True)
         self.conv2=LAConv2D(in_planes,in_planes,3,1,1,use_bias=True)
 
+        self.bn1=nn.BatchNorm2d(in_planes)
+
     def forward(self,x):
         res=self.conv1(x)
+        res=self.bn1(res)
         res=self.relu1(res)
         res=self.conv2(res)
         x=x+res
@@ -123,13 +126,17 @@ class CovBlock(nn.Module):
             nn.Linear(hidden_dim, features_num),
         )
 
+        self.ln = nn.LayerNorm(feature_dimension)
+
     def forward(self, x):
-        x = x - x.mean(dim=-2, keepdim=True)
+        x = x - x.mean(dim=-1, keepdim=True)
 
         cov = x.transpose(-2, -1) @ x
         cov_norm = torch.norm(x, p=2, dim=-2, keepdim=True)
         cov_norm = cov_norm.transpose(-2, -1) @ cov_norm
         cov /= cov_norm
+
+        cov = self.ln(cov)
 
         weight = self.cov_mlp(cov)
         return weight
@@ -141,34 +148,33 @@ class BandSelectBlock(nn.Module):
 
         self.CovBlockList = nn.ModuleList([])
         for _ in range(features_num):
-            self.CovBlockList.append(CovBlock(feature_dimension, 1, round(feature_dimension * 0.6), 0.05))
+            self.CovBlockList.append(CovBlock(feature_dimension, 1, round(feature_dimension * 0.8), 0.05))
 
         self.global_covblock = CovBlock(features_num, 1, features_num, 0)
         self.global_pool = nn.AdaptiveAvgPool2d(1)
 
-        self.temperature = nn.Parameter(torch.zeros(1, feature_dimension, 1, 1))
-
     def forward(self, feature_maps):
         H = feature_maps[0].shape[2]
+        W = feature_maps[0].shape[3]
         C_weights = []
 
         for feature_map, block in zip(feature_maps, self.CovBlockList):
-            input = rearrange(feature_map, 'B C H W -> B (H W) C', H=H)
+            input = rearrange(feature_map, 'B C H W -> B (H W) C', H=H) / (H * W - 1)
             C_weights.append(block(input).squeeze_(-1))
 
         weight_matrix = torch.stack(C_weights, dim=1)  # B x features_num x C
         feature_maps = torch.stack(feature_maps, dim=1)  # B x features_num x C x H x W
         output = weight_matrix.unsqueeze_(-1).unsqueeze_(-1) * feature_maps # B x features_num x C x H x W
 
-        global_weight = self.global_pool(feature_maps).squeeze_(-1).squeeze_(-1)  # B x features_num x C
+        global_weight = self.global_pool(feature_maps).squeeze_(-1).squeeze_(-1) # B x features_num x C
         global_weight = F.softmax(self.global_covblock(global_weight.transpose_(-1, -2)), dim=-2) # B x features_num x 1
 
-        output = torch.sum(output * global_weight.unsqueeze(-1).unsqueeze(-1), dim=1) + self.temperature # B x C x H x W
+        output = torch.sum(output * global_weight.unsqueeze(-1).unsqueeze(-1), dim=1) # B x C x H x W
         return output
 
 
 class BWNet(nn.Module):
-    def __init__(self, pan_dim=1, ms_dim=8, channel=32, num_lacrbs=5):
+    def __init__(self, pan_dim=1, ms_dim=8, channel=48, num_lacrbs=6):
         super().__init__()
 
         self.ms_dim = ms_dim
@@ -210,7 +216,7 @@ def summaries(model, input_size, grad=False):
 
 if __name__ == '__main__':
     model = BWNet().cuda()
-    summaries(model, grad=True)
+    summaries(model, [(1, 8, 16, 16), (1, 1, 64, 64)], grad=True)
 
 
 

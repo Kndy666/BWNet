@@ -109,53 +109,7 @@ class LACRB(nn.Module):
         res=self.conv2(res)
         x=x+res
         return x
-
-class CovBlock(nn.Module):
-    def __init__(self, feature_dimension, features_num, hidden_dim, dropout=0.05):
-        super().__init__()
-
-        self.cov_mlp = nn.Sequential(
-            nn.Linear(feature_dimension, feature_dimension),
-            nn.Dropout(dropout, inplace=True),
-            nn.LeakyReLU(inplace=True),
-            nn.Linear(feature_dimension, hidden_dim),
-            nn.LeakyReLU(inplace=True),
-            nn.Linear(hidden_dim, features_num),
-        )
-
-    def forward(self, x):
-        x = x - x.mean(dim=-2, keepdim=True)
-
-        cov = x.transpose(-2, -1) @ x
-        cov_norm = torch.norm(x, p=2, dim=-2, keepdim=True)
-        cov_norm = cov_norm.transpose(-2, -1) @ cov_norm
-        cov /= cov_norm
-
-        weight = self.cov_mlp(cov)
-        return weight
-
-
-class BandSelectBlock(nn.Module):
-    def __init__(self, feature_dimension, features_num):
-        super().__init__()
-
-        self.global_covblock = CovBlock(features_num, 1, features_num, 0)
-        self.global_pool = nn.AdaptiveAvgPool2d(1)
-
-        self.temperature = nn.Parameter(torch.zeros(1, feature_dimension, 1, 1))
-
-    def forward(self, feature_maps):
-        H = feature_maps[0].shape[2]
-
-        feature_maps = torch.stack(feature_maps, dim=1)  # B x features_num x C x H x W
-
-        global_weight = self.global_pool(feature_maps).squeeze_(-1).squeeze_(-1)  # B x features_num x C
-        global_weight = F.softmax(self.global_covblock(global_weight.transpose_(-1, -2)), dim=-2) # B x features_num x 1
-
-        output = torch.sum(feature_maps * global_weight.unsqueeze(-1).unsqueeze(-1), dim=1) + self.temperature # B x C x H x W
-        return output
-
-
+    
 class BWNet(nn.Module):
     def __init__(self, pan_dim=1, ms_dim=8, channel=32, num_lacrbs=5):
         super().__init__()
@@ -168,7 +122,6 @@ class BWNet(nn.Module):
         self.layers = nn.ModuleList([])
         for _ in range(num_lacrbs):
             self.layers.append(LACRB(channel, ms_dim))
-        self.bw_output = BandSelectBlock(channel, num_lacrbs)
         self.to_output = nn.Sequential(
             LAConv2D(channel, ms_dim, 3, 1, 1, use_bias=True)
         )
@@ -182,9 +135,8 @@ class BWNet(nn.Module):
         for layer in self.layers:
             x = layer(x)
             feature_list.append(x)
-        output = self.bw_output(feature_list)
 
-        return self.to_output(output) + ms
+        return self.to_output(x) + ms
 
 
 def summaries(model, input_size, grad=False):
@@ -199,7 +151,7 @@ def summaries(model, input_size, grad=False):
 
 if __name__ == '__main__':
     model = BWNet().cuda()
-    summaries(model, grad=True)
+    summaries(model, [(1, 8, 16, 16), (1, 1, 64, 64)], grad=True)
 
 
 
